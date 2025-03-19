@@ -1,0 +1,43 @@
+import datetime
+
+from jose import jwt, JWTError
+from sqlalchemy import select
+
+from app.db.base import async_session
+from app.exceptions import UserNotAuthenticatedException, InvalidTokenException, TokenExpiredException, \
+    UserIdNotFoundException, UserNotFoundException
+from fastapi import Request, Depends
+from app.models.user import User as MUser
+
+from app.settings import settings
+
+
+async def get_current_user(request: Request):
+    # Получение jwt-токена
+    token = request.cookies.get("access_token")
+    if not token:
+        raise UserNotAuthenticatedException
+
+    # Получение тела токена
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        raise InvalidTokenException
+
+    # Проверка срока действия токена
+    expire = payload.get("exp")
+    if not expire or int(expire) < datetime.datetime.now(datetime.UTC).timestamp():
+        raise TokenExpiredException
+
+    # Поиск пользователя в базе данных
+    user_id = payload.get("sub")
+    if not user_id:
+        raise UserIdNotFoundException
+    async with async_session() as session:
+        result = await session.execute(select(MUser).where(MUser.id == int(user_id)))
+        user = result.scalars().first()
+
+    # Проверка существования пользователя
+    if not user:
+        raise UserNotFoundException
+    return user
