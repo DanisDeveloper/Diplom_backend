@@ -6,7 +6,8 @@ from sqlalchemy import select
 
 from app.db.base import async_session
 from app.exceptions import UserAlreadyExistsException, UserNotExistsException, InvalidPasswordException, \
-    UserIdNotFoundException, TokenExpiredException, RefreshTokenNotFound, InvalidRefreshTokenException
+    UserIdNotFoundException, TokenExpiredException, RefreshTokenNotFound, InvalidRefreshTokenException, \
+    UserNotAuthenticatedException, InvalidTokenException
 from app.models.user import User as MUser
 from app.schemas.auth.user_login import UserLogin
 from app.schemas.auth.user_register import UserRegister
@@ -100,3 +101,67 @@ async def refresh(request: Request, response: Response):
         "message": "Successfully refreshed token"
     }
 
+
+@router.get("/me")
+async def get_me(request: Request):
+    access_token = request.cookies.get("access_token")
+    if not access_token:
+        return {"isAuth": False}
+
+    try:
+        payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        return {"isAuth": False}
+
+    if payload.get('exp') < datetime.datetime.now(datetime.UTC).timestamp():
+        return {"isAuth": False}
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return {"isAuth": False}
+
+    async with async_session() as session:
+        result = await session.execute(select(MUser).where(MUser.id == int(user_id)))
+        user = result.scalars().first()
+
+    if not user:
+        raise UserNotExistsException
+
+    return {"isAuth": True, "user": {"name": user.name, "id": user.id}}
+
+
+@router.get("/profile")
+async def get_me(request: Request):
+    access_token = request.cookies.get("access_token")
+    if not access_token:
+        raise InvalidTokenException
+
+    try:
+        payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        raise InvalidTokenException
+
+    if payload.get('exp') < datetime.datetime.now(datetime.UTC).timestamp():
+        raise TokenExpiredException
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise UserIdNotFoundException
+
+    async with async_session() as session:
+        result = await session.execute(select(MUser).where(MUser.id == int(user_id)))
+        user = result.scalars().first()
+
+    if not user:
+        raise UserNotExistsException
+
+    user_data = {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "biography": user.biography,
+        "avatar_url": user.avatar_url,
+        "created_at": user.created_at
+    }
+    # TODO сделать join на получение всех публичных шейдеров для всех и приватных для авторизованного пользователя
+    return user_data

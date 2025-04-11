@@ -18,9 +18,4 @@ app.add_middleware(
 )
 
 if __name__ == '__main__':
-    # uvicorn.run("app.main:app", host="localhost", port=8001, reload=True)
-
-    a = 200000
-    b = 200000
-    print(a is b)
-    a = 2000
+    uvicorn.run("app.main:app", host="localhost", port=8000, reload=True)

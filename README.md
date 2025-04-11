@@ -8,3 +8,8 @@ poetry install
 
 2) Настройка переменных окружения .env
 3) Настрока alembic.ini (настроить адрес до базы данных)
+
+
+```bash
+python -m app.main
+```
