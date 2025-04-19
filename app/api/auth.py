@@ -106,19 +106,19 @@ async def refresh(request: Request, response: Response):
 async def get_me(request: Request):
     access_token = request.cookies.get("access_token")
     if not access_token:
-        return {"isAuth": False}
+        return None
 
     try:
         payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except JWTError:
-        return {"isAuth": False}
+        return None
 
     if payload.get('exp') < datetime.datetime.now(datetime.UTC).timestamp():
-        return {"isAuth": False}
+        return None
 
     user_id = payload.get("sub")
     if not user_id:
-        return {"isAuth": False}
+        return None
 
     async with async_session() as session:
         result = await session.execute(select(MUser).where(MUser.id == int(user_id)))
@@ -127,7 +127,7 @@ async def get_me(request: Request):
     if not user:
         raise UserNotExistsException
 
-    return {"isAuth": True, "user": {"name": user.name, "id": user.id}}
+    return {"name": user.name, "id": user.id}
 
 
 @router.get("/profile")
