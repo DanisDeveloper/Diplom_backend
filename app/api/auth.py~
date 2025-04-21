@@ -1,13 +1,18 @@
 import datetime
 
-from fastapi import APIRouter, Response, Request, status
+from fastapi import APIRouter, Response, Request
 from jose import jwt, JWTError
 from sqlalchemy import select
 
 from app.db.base import async_session
-from app.exceptions import UserAlreadyExistsException, UserNotExistsException, InvalidPasswordException, \
-    UserIdNotFoundException, TokenExpiredException, RefreshTokenNotFound, InvalidRefreshTokenException, \
-    UserNotAuthenticatedException, InvalidTokenException
+from app.exceptions import (UserAlreadyExistsException,
+                            UserNotExistsException,
+                            InvalidPasswordException,
+                            UserIdNotFoundException,
+                            TokenExpiredException,
+                            RefreshTokenNotFound,
+                            InvalidRefreshTokenException,
+                            InvalidTokenException)
 from app.models.user import User as MUser
 from app.schemas.auth.user_login import UserLogin
 from app.schemas.auth.user_register import UserRegister
@@ -106,19 +111,19 @@ async def refresh(request: Request, response: Response):
 async def get_me(request: Request):
     access_token = request.cookies.get("access_token")
     if not access_token:
-        return {"isAuth": False}
+        return None
 
     try:
         payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except JWTError:
-        return {"isAuth": False}
+        return None
 
     if payload.get('exp') < datetime.datetime.now(datetime.UTC).timestamp():
-        return {"isAuth": False}
+        return None
 
     user_id = payload.get("sub")
     if not user_id:
-        return {"isAuth": False}
+        return None
 
     async with async_session() as session:
         result = await session.execute(select(MUser).where(MUser.id == int(user_id)))
@@ -127,7 +132,7 @@ async def get_me(request: Request):
     if not user:
         raise UserNotExistsException
 
-    return {"isAuth": True, "user": {"name": user.name, "id": user.id}}
+    return {"name": user.name, "id": user.id}
 
 
 @router.get("/profile")
@@ -164,4 +169,4 @@ async def get_me(request: Request):
         "created_at": user.created_at
     }
     # TODO сделать join на получение всех публичных шейдеров для всех и приватных для авторизованного пользователя
-    return {"isAuth": True, "user": user_data}
+    return user_data

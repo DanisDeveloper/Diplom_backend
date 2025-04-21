@@ -1,13 +1,18 @@
 import datetime
 
-from fastapi import APIRouter, Response, Request, status
+from fastapi import APIRouter, Response, Request
 from jose import jwt, JWTError
 from sqlalchemy import select
 
 from app.db.base import async_session
-from app.exceptions import UserAlreadyExistsException, UserNotExistsException, InvalidPasswordException, \
-    UserIdNotFoundException, TokenExpiredException, RefreshTokenNotFound, InvalidRefreshTokenException, \
-    UserNotAuthenticatedException, InvalidTokenException
+from app.exceptions import (UserAlreadyExistsException,
+                            UserNotExistsException,
+                            InvalidPasswordException,
+                            UserIdNotFoundException,
+                            TokenExpiredException,
+                            RefreshTokenNotFound,
+                            InvalidRefreshTokenException,
+                            InvalidTokenException)
 from app.models.user import User as MUser
 from app.schemas.auth.user_login import UserLogin
 from app.schemas.auth.user_register import UserRegister
@@ -130,24 +135,8 @@ async def get_me(request: Request):
     return {"name": user.name, "id": user.id}
 
 
-@router.get("/profile")
-async def get_me(request: Request):
-    access_token = request.cookies.get("access_token")
-    if not access_token:
-        raise InvalidTokenException
-
-    try:
-        payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    except JWTError:
-        raise InvalidTokenException
-
-    if payload.get('exp') < datetime.datetime.now(datetime.UTC).timestamp():
-        raise TokenExpiredException
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise UserIdNotFoundException
-
+@router.get("/profile/{user_id}")
+async def get_me(user_id: int, request: Request):
     async with async_session() as session:
         result = await session.execute(select(MUser).where(MUser.id == int(user_id)))
         user = result.scalars().first()

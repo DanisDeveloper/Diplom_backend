@@ -14,7 +14,7 @@ from app.settings import settings
 
 
 
-async def get_current_user_id(request: Request) -> int:
+async def get_current_user_id(request: Request):
     # Получение jwt-токена
     token = request.cookies.get("access_token")
     if not token:

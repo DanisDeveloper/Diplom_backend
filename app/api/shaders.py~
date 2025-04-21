@@ -35,7 +35,7 @@ async def get_shader_by_id(shader_id: int, request: Request):
         )
         shader = result.scalars().first()
         if shader is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
+            return HTTPRe
 
     if not shader.visibility:
         async with async_session() as session:
