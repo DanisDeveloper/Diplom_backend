@@ -42,7 +42,7 @@ async def register(user: UserRegister):
             hashed_password=hashed_password,
             role="USER",
             created_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
-            avatar_url="",
+            avatar_url=None,
             biography=""
         )
         session.add(user)

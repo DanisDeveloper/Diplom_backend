@@ -47,13 +47,16 @@ async def get_profile_by_id(user_id: int, request: Request):
 
 @router.post("/avatar")
 async def upload_avatar(avatar: UploadFile, user: MUser = Depends(get_current_user)):
-    ext = pathlib.Path(avatar.filename).suffix
-    filename = f"{uuid.uuid4().hex}{ext}"
-    avatar_url = f"avatars/{filename}"
+    # Удаляем старый аватар
+    if user.avatar_url and os.path.exists(f"public/{user.avatar_url}"):
+        os.remove(f"public/{user.avatar_url}")
 
+    # Сохраняем новый
+    avatar_url = f"avatars/{uuid.uuid4().hex}{pathlib.Path(avatar.filename).suffix}"
     with open(f"public/{avatar_url}", "wb+") as f:
         shutil.copyfileobj(avatar.file, f)
 
+    # Обновляем информацию в БД
     async with async_session() as session:
         user.avatar_url = avatar_url
         session.add(user)

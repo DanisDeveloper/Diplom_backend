@@ -11,5 +11,5 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False, default="USER")
     created_at = Column(TIMESTAMP, nullable=False)
-    avatar_url = Column(String)
+    avatar_url = Column(String, nullable=True)
     biography = Column(String)
