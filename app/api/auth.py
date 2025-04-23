@@ -11,9 +11,9 @@ from app.exceptions import (UserAlreadyExistsException,
                             UserIdNotFoundException,
                             TokenExpiredException,
                             RefreshTokenNotFound,
-                            InvalidRefreshTokenException,
-                            InvalidTokenException)
+                            InvalidRefreshTokenException)
 from app.models.user import User as MUser
+from app.models.shader import Shader as MShader
 from app.schemas.auth.user_login import UserLogin
 from app.schemas.auth.user_register import UserRegister
 from app.security.utils import get_password_hash, verify_password, create_refresh_token, create_access_token
@@ -135,22 +135,3 @@ async def get_me(request: Request):
     return {"name": user.name, "id": user.id}
 
 
-@router.get("/profile/{user_id}")
-async def get_me(user_id: int, request: Request):
-    async with async_session() as session:
-        result = await session.execute(select(MUser).where(MUser.id == int(user_id)))
-        user = result.scalars().first()
-
-    if not user:
-        raise UserNotExistsException
-
-    user_data = {
-        "id": user.id,
-        "email": user.email,
-        "name": user.name,
-        "biography": user.biography,
-        "avatar_url": user.avatar_url,
-        "created_at": user.created_at
-    }
-    # TODO сделать join на получение всех публичных шейдеров для всех и приватных для авторизованного пользователя
-    return user_data

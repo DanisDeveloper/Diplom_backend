@@ -3,3 +3,4 @@
 alembic.ini
 .idea
 *pycache*
+public/avatars/*
