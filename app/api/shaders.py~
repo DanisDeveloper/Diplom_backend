@@ -21,12 +21,13 @@ router = APIRouter(
 async def get_all_visible_shaders(response: Response, page: int = Query(default=1, ge=1)):
     async with async_session() as session:
         result = await session.execute(
-            select(MShader)
+            select(MShader.id, MShader.title, MShader.code, MShader.user_id, MUser.name.label("username"))
+            .join(MUser, MShader.user_id == MUser.id)
+            # .order_by(MShader.created_at.desc()) # TODO сделать сортировку на будщее
             .where(MShader.visibility == True)
         )
-        shaders = result.scalars().all()
+        shaders = result.mappings().all()
         response.headers["X-Total-Count"] = str((len(shaders) - 1) // 12 + 1)
-        print(response.headers)
         return shaders[(page - 1) * 12: page * 12]
 
 
