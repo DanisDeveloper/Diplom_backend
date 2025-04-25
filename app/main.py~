@@ -20,7 +20,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],  # Разрешенные методы (GET, POST, etc.)
     allow_headers=["*"],  # Разрешенные заголовки
-    expose_headers=["X-Total-Count"]
+    expose_headers=["*"]
 )
 
 if __name__ == '__main__':

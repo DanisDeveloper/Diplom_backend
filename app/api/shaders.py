@@ -1,8 +1,9 @@
 import datetime
 
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.params import Depends
+from fastapi.params import Depends, Query
 from sqlalchemy import select
+from starlette.responses import Response
 
 from app.db.base import async_session
 from app.models.shader import Shader as MShader
@@ -17,13 +18,15 @@ router = APIRouter(
 
 
 @router.get("/")
-async def get_all_visible_shaders():
+async def get_all_visible_shaders(response: Response, page: int = Query(default=1, ge=1)):
     async with async_session() as session:
         result = await session.execute(
             select(MShader)
             .where(MShader.visibility == True)
         )
-        return result.scalars().all()
+        shaders = result.scalars().all()
+        response.headers["X-Total-Count"] = str((len(shaders) - 1) // 12 + 1)
+        return shaders[(page - 1) * 12: page * 12]
 
 
 @router.get("/{shader_id}")
