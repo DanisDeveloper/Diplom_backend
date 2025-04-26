@@ -69,7 +69,8 @@ async def upsert_shader(
                 visibility=body.visibility,
                 user_id=user_id,
                 created_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
-                updated_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+                updated_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
+                id_forked=body.id_forked
             )
             session.add(new_shader)
             await session.commit()

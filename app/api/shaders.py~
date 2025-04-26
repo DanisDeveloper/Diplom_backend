@@ -23,7 +23,7 @@ async def get_all_visible_shaders(response: Response, page: int = Query(default=
         result = await session.execute(
             select(MShader.id, MShader.title, MShader.code, MShader.user_id, MUser.name.label("username"))
             .join(MUser, MShader.user_id == MUser.id)
-            # .order_by(MShader.created_at.desc()) # TODO сделать сортировку на будщее
+            .order_by(MShader.created_at.desc()) # TODO сделать сортировку на будщее
             .where(MShader.visibility == True)
         )
         shaders = result.mappings().all()
@@ -60,6 +60,7 @@ async def upsert_shader(
         body: Shader,
         user_id: int = Depends(get_current_user_id)
 ):
+    print(body.model_dump())
     if body.id is None:  # INSERT
         async with async_session() as session:
             new_shader = MShader(
@@ -69,7 +70,8 @@ async def upsert_shader(
                 visibility=body.visibility,
                 user_id=user_id,
                 created_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
-                updated_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+                updated_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
+                id_forked=body.id_forked
             )
             session.add(new_shader)
             await session.commit()

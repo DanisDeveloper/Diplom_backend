@@ -7,3 +7,4 @@ class Shader(BaseModel):
     description: str
     code: str
     visibility: bool
+    id_forked: int | None
