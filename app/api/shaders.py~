@@ -1,5 +1,5 @@
 import datetime
-
+from sqlalchemy import func
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.params import Depends, Query
 from sqlalchemy import select
@@ -22,10 +22,17 @@ router = APIRouter(
 async def get_all_visible_shaders(response: Response, page: int = Query(default=1, ge=1)):
     async with async_session() as session:
         result = await session.execute(
-            select(MShader.id, MShader.title, MShader.code, MShader.user_id, MUser.name.label("username"))
+            select(MShader.id,
+                   MShader.title,
+                   MShader.code,
+                   MShader.user_id,
+                   MUser.name.label("username"),
+                   func.count(MLike.id).label("likes"))
             .join(MUser, MShader.user_id == MUser.id)
-            .order_by(MShader.created_at.desc())  # TODO сделать сортировку на будщее
+            .outerjoin(MLike, MShader.id == MLike.shader_id)
             .where(MShader.visibility == True)
+            .group_by(MShader.id, MUser.name)
+            .order_by(func.count(MLike.id).desc(), MShader.created_at.asc())  # TODO сделать сортировку на будщее
         )
         shaders = result.mappings().all()
         response.headers["X-Total-Count"] = str((len(shaders) - 1) // 12 + 1)
@@ -37,15 +44,15 @@ async def get_shader_by_id(shader_id: int, request: Request):
     if request.cookies.get("access_token") is None:
         async with async_session() as session:
             result = await session.execute(
-                select(MShader)
+                select(MShader, MUser.name.label("username"))
                 .join(MUser, MShader.user_id == MUser.id)
                 .where(MShader.id == shader_id)
             )
-            shader = result.mappings().first()
+            shader, username = result.first()
             if shader is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
 
-            return {"shader": shader, "is_liked": None, "username": ""}
+            return {"shader": shader, "is_liked": None, "username": username}
 
     else:
         user_id: int = await get_current_user_id(request)

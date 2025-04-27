@@ -32,7 +32,7 @@ async def get_all_visible_shaders(response: Response, page: int = Query(default=
             .outerjoin(MLike, MShader.id == MLike.shader_id)
             .where(MShader.visibility == True)
             .group_by(MShader.id, MUser.name)
-            .order_by(MShader.created_at.desc())  # TODO сделать сортировку на будщее
+            .order_by(func.count(MLike.id).desc(), MShader.created_at.desc())  # TODO сделать сортировку на будщее
         )
         shaders = result.mappings().all()
         response.headers["X-Total-Count"] = str((len(shaders) - 1) // 12 + 1)

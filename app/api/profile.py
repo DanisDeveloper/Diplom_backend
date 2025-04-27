@@ -1,7 +1,7 @@
 import os
 import pathlib
 import uuid
-
+from sqlalchemy.orm import selectinload
 from fastapi import APIRouter, Request, UploadFile, Depends
 from sqlalchemy import select
 import shutil
@@ -19,18 +19,43 @@ router = APIRouter(
 
 @router.get("/{user_id}")
 async def get_profile_by_id(user_id: int, request: Request):
-    async with async_session() as session:
-        result = await session.execute(select(MUser).where(MUser.id == int(user_id)))
-        user = result.scalars().first()
+    # TODO переделать через один запрос в БД
+    # TODO добавить возвращаемые значения
+    if request.cookies.get("access_token") is not None:
+        user: MUser = await get_current_user(request)
 
-    if not user:
-        raise UserNotExistsException
+        if user.id == user_id:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(MShader)
+                    .where(MShader.user_id == int(user_id))
+                )
+                shaders = result.scalars().all()
+        else:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(MShader)
+                    .where((MShader.user_id == int(user_id)) & (MShader.visibility == True))
+                )
+                shaders = result.scalars().all()
+    else:
+        # TODO вынести в функцию
+        async with async_session() as session:
+            result = await session.execute(
+                select(MUser)
+                .where(MUser.id == int(user_id))
+            )
+            user = result.scalars().first()
 
-    async with async_session() as session:
-        result = await session.execute(
-            select(MShader).where(MShader.user_id == int(user_id))
-        )
-        shaders = result.scalars().all()
+        if not user:
+            raise UserNotExistsException
+
+        async with async_session() as session:
+            result = await session.execute(
+                select(MShader)
+                .where((MShader.user_id == int(user_id)) & (MShader.visibility == True))
+            )
+            shaders = result.scalars().all()
 
     user_data = {
         "id": user.id,
