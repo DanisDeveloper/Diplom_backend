@@ -34,23 +34,39 @@ async def get_all_visible_shaders(response: Response, page: int = Query(default=
 
 @router.get("/{shader_id}")
 async def get_shader_by_id(shader_id: int, request: Request):
-    user_id: int = await get_current_user_id(request)
+    if request.cookies.get("access_token") is None:
+        async with async_session() as session:
+            result = await session.execute(
+                select(MShader, MUser.name.label("username"))
+                .join(MUser, MShader.user_id == MUser.id)
+                .where(MShader.id == shader_id)
+            )
+            shader, username = result.first()
+            if shader is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
 
-    async with async_session() as session:
-        result = await session.execute(
-            select(MShader, MLike.id.label("is_liked"))
-            .outerjoin(MLike, (MLike.shader_id == MShader.id) & (MLike.user_id == user_id))
-            .where(MShader.id == shader_id)
-        )
-        shader, is_liked = result.first()
-        if shader is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
+            return {"shader": shader, "is_liked": None, "username": username}
 
-        if not shader.visibility:
-            if shader.user_id != user_id:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is not the owner of the shader")
+    else:
+        user_id: int = await get_current_user_id(request)
 
-    return {"shader": shader, "is_liked": is_liked is not None}
+        async with async_session() as session:
+            result = await session.execute(
+                select(MShader, MLike.id.label("is_liked"), MUser.name.label("username"))
+                .join(MUser, MShader.user_id == MUser.id)
+                .outerjoin(MLike, (MLike.shader_id == MShader.id) & (MLike.user_id == user_id))
+                .where(MShader.id == shader_id)
+            )
+            shader, is_liked, username = result.first()
+            if shader is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
+
+            if not shader.visibility:
+                if shader.user_id != user_id:
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                        detail="User is not the owner of the shader")
+
+        return {"shader": shader, "is_liked": is_liked is not None, "username": username}
 
 
 @router.post("/")
