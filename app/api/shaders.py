@@ -1,5 +1,5 @@
 import datetime
-
+from sqlalchemy import func
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.params import Depends, Query
 from sqlalchemy import select
@@ -22,10 +22,17 @@ router = APIRouter(
 async def get_all_visible_shaders(response: Response, page: int = Query(default=1, ge=1)):
     async with async_session() as session:
         result = await session.execute(
-            select(MShader.id, MShader.title, MShader.code, MShader.user_id, MUser.name.label("username"))
+            select(MShader.id,
+                   MShader.title,
+                   MShader.code,
+                   MShader.user_id,
+                   MUser.name.label("username"),
+                   func.count(MLike.id).label("likes"))
             .join(MUser, MShader.user_id == MUser.id)
-            .order_by(MShader.created_at.desc())  # TODO сделать сортировку на будщее
+            .outerjoin(MLike, MShader.id == MLike.shader_id)
             .where(MShader.visibility == True)
+            .group_by(MShader.id, MUser.name)
+            .order_by(MShader.created_at.desc())  # TODO сделать сортировку на будщее
         )
         shaders = result.mappings().all()
         response.headers["X-Total-Count"] = str((len(shaders) - 1) // 12 + 1)
