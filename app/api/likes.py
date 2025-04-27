@@ -1,0 +1,40 @@
+import datetime
+
+from fastapi import APIRouter
+from fastapi.params import Depends
+from sqlalchemy import delete
+
+from app.db.base import async_session
+from app.models.like import Like as MLike
+
+from app.security.dependencies import get_current_user_id
+
+router = APIRouter(
+    prefix="/likes",
+    tags=["likes"],
+)
+
+
+@router.post("/{shader_id}")
+async def like_shader(shader_id: int, user_id: int = Depends(get_current_user_id)):
+    # TODO в идеале сделать логическое удаление, но пока обойдусь и нет поля для сохранения статуса лайка в модели
+    async with async_session() as session:
+        like = MLike(
+            created_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
+            user_id=user_id,
+            shader_id=shader_id
+        )
+        session.add(like)
+        await session.commit()
+        return like
+
+
+@router.delete("/{shader_id}")
+async def unlike_shader(shader_id: int, user_id: int = Depends(get_current_user_id)):
+    async with async_session() as session:
+        await session.execute(
+            delete(MLike)
+            .where((MLike.shader_id == shader_id) & (MLike.user_id == user_id))
+        )
+        await session.commit()
+        return
