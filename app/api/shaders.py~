@@ -7,6 +7,7 @@ from starlette.responses import Response
 
 from app.db.base import async_session
 from app.models.like import Like as MLike
+from app.models.comment import Comment as MComment
 from app.models.shader import Shader as MShader
 from app.models.user import User as MUser
 from app.schemas.shader.shader import Shader
@@ -26,11 +27,10 @@ async def get_all_visible_shaders(
 ):
 
     match sort:
-        case 'Newest':
-            order_by = MShader.created_at.desc()
         case 'Popular':
-            order_by = func.count(MLike.id).desc()
-    order_by = MShader.created_at.desc() if sort == "Newest" else func.count(MLike.id).desc()
+            sort_option = func.count(MLike.id).desc()
+        case _: # 'Newest'
+            sort_option = MShader.created_at.desc()
 
     async with async_session() as session:
         result = await session.execute(
@@ -44,7 +44,7 @@ async def get_all_visible_shaders(
             .outerjoin(MLike, MShader.id == MLike.shader_id)
             .where(MShader.visibility == True)
             .group_by(MShader.id, MUser.name)
-            .order_by(func.count(MLike.id).desc(), MShader.created_at.desc())  # TODO сделать сортировку на будщее
+            .order_by(sort_option)  # TODO сделать сортировку на будщее
         )
         shaders = result.mappings().all()
         response.headers["X-Total-Count"] = str((len(shaders) - 1) // 12 + 1)
@@ -53,6 +53,7 @@ async def get_all_visible_shaders(
 
 @router.get("/{shader_id}")
 async def get_shader_by_id(shader_id: int, request: Request):
+    response_data = None
     if request.cookies.get("access_token") is None:
         async with async_session() as session:
             result = await session.execute(
@@ -64,7 +65,7 @@ async def get_shader_by_id(shader_id: int, request: Request):
             if shader is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
 
-            return {"shader": shader, "is_liked": None, "username": username}
+            response_data = {"shader": shader, "is_liked": None, "username": username}
 
     else:
         user_id: int = await get_current_user_id(request)
@@ -85,8 +86,31 @@ async def get_shader_by_id(shader_id: int, request: Request):
                     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                         detail="User is not the owner of the shader")
 
-        return {"shader": shader, "is_liked": is_liked is not None, "username": username}
 
+        response_data = {"shader": shader, "is_liked": is_liked is not None, "username": username}
+
+    # async with async_session() as session:
+    #     result = await session.execute(
+    #         select(MComment, MUser.name.label("username"), MUser.avatar_url.label("avatar_url"))
+    #         .join(MUser, MComment.user_id == MUser.id)
+    #         .where(MComment.shader_id == shader_id)
+    #         .order_by(MComment.created_at.asc())
+    #     )
+    #     rows = result.all()
+    #     comments = []
+    #     for comment, username, avatar_url in rows:
+    #         comments.append({
+    #             "id": comment.id,
+    #             "text": comment.text if not comment.hidden else "Hidden",
+    #             "hidden": comment.hidden,
+    #             "created_at": comment.created_at,
+    #             "user_id": comment.user_id,
+    #             "shader_id": comment.shader_id,
+    #             "username": username,
+    #             "avatar_url": avatar_url,
+    #         })
+    # response_data["comments"] = comments
+    return response_data
 
 @router.post("/")
 async def upsert_shader(

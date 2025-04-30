@@ -51,6 +51,7 @@ async def register(user: UserRegister):
 
 @router.post("/login")
 async def login(response: Response, user: UserLogin):
+    print(user)
     async with async_session() as session:
         result = await session.execute(
             select(MUser)

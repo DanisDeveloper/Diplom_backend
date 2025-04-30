@@ -1,0 +1,35 @@
+from fastapi import APIRouter
+from sqlalchemy import select
+
+from app.db.base import async_session
+from app.models.comment import Comment as MComment
+from app.models.user import User as MUser
+
+router = APIRouter(
+    prefix="/comments",
+    tags=["comments"],
+)
+
+@router.get("/{shader_id}")
+async def get_comments(shader_id: int):
+    async with async_session() as session:
+        result = await session.execute(
+            select(MComment, MUser.name.label("username"), MUser.avatar_url.label("avatar_url"))
+            .join(MUser, MComment.user_id == MUser.id)
+            .where(MComment.shader_id == shader_id)
+            .order_by(MComment.created_at.asc())
+        )
+        rows = result.all()
+        comments = []
+        for comment, username, avatar_url in rows:
+            comments.append({
+                "id": comment.id,
+                "text": comment.text if not comment.hidden else "Hidden",
+                "hidden": comment.hidden,
+                "created_at": comment.created_at,
+                "user_id": comment.user_id,
+                "shader_id": comment.shader_id,
+                "username": username,
+                "avatar_url": avatar_url,
+            })
+        return comments

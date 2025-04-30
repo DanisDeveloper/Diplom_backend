@@ -7,7 +7,7 @@ from app.api.auth import router as auth_router
 from app.api.likes import router as likes_router
 from app.api.profile import router as profile_router
 from app.api.shaders import router as shaders_router
-
+from app.api.comments import router as comments_router
 app = FastAPI()
 
 app.mount("/public", StaticFiles(directory="public"), name="public")
@@ -15,11 +15,12 @@ app.include_router(shaders_router)
 app.include_router(auth_router)
 app.include_router(profile_router)
 app.include_router(likes_router)
+app.include_router(comments_router)
 
 # Настройка CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Разрешенные домены
+    allow_origins=["http://192.168.206.243:5173", "http://localhost:5173"],  # Разрешенные домены
     allow_credentials=True,
     allow_methods=["*"],  # Разрешенные методы (GET, POST, etc.)
     allow_headers=["*"],  # Разрешенные заголовки
@@ -27,4 +28,4 @@ app.add_middleware(
 )
 
 if __name__ == '__main__':
-    uvicorn.run("app.main:app", host="localhost", port=8000)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000)

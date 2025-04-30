@@ -1,8 +1,13 @@
 from . import auth
-from . import shaders
+from . import comments
+from . import likes
 from . import profile
+from . import shaders
+
 __all__ = [
     "auth",
     "shaders",
-    "profile"
+    "profile",
+    "likes",
+    "comments"
 ]
