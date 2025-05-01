@@ -20,7 +20,7 @@ app.include_router(comments_router)
 # Настройка CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://192.168.206.243:5173", "http://localhost:5173"],  # Разрешенные домены
+    allow_origins=["http://192.168.206.243:5173","http://192.168.226.219:5173", "http://localhost:5173"],  # Разрешенные домены
     allow_credentials=True,
     allow_methods=["*"],  # Разрешенные методы (GET, POST, etc.)
     allow_headers=["*"],  # Разрешенные заголовки

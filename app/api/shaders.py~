@@ -28,9 +28,9 @@ async def get_all_visible_shaders(
 
     match sort:
         case 'Liked':
-            sort_option = func.count(distinct(MLike.id)).desc()
+            sort_option = func.count(MLike.id).desc()
         case 'Commented':
-            sort_option = func.count(distinct(MComment.id)).desc()
+            sort_option = func.count(MComment.id).desc()
         case _: # 'Newest'
             sort_option = MShader.created_at.desc()
 
