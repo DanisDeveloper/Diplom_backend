@@ -4,4 +4,4 @@ alembic.ini
 .idea
 *pycache*
 public/avatars/*
-poetry.lock
+uv.lock

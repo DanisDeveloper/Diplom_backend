@@ -1,14 +1,21 @@
-from fastapi import APIRouter
-from sqlalchemy import select
+import datetime
+
+from fastapi import APIRouter, HTTPException
+from fastapi.params import Depends
+from sqlalchemy import select, update
 
 from app.db.base import async_session
 from app.models.comment import Comment as MComment
 from app.models.user import User as MUser
+from app.schemas.comment.post_comment import PostComment as SComment
+from app.schemas.comment.toggle_hidden import ToggleHidden
+from app.security.dependencies import get_current_user
 
 router = APIRouter(
     prefix="/comments",
     tags=["comments"],
 )
+
 
 @router.get("/{shader_id}")
 async def get_comments(shader_id: int):
@@ -34,3 +41,54 @@ async def get_comments(shader_id: int):
             })
         print(comments)
         return comments
+
+
+@router.post("/{shader_id}")
+async def create_comment(
+        shader_id: int,
+        comment: SComment,
+        user: MUser = Depends(get_current_user)
+):
+    async with async_session() as session:
+        mcomment = MComment(
+            text=comment.text,
+            hidden=False,
+            created_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
+            user_id=user.id,
+            shader_id=shader_id
+        )
+        session.add(mcomment)
+        await session.commit()
+        await session.refresh(mcomment)
+        return {
+            "id": mcomment.id,
+            "text": mcomment.text,
+            "hidden": mcomment.hidden,
+            "created_at": mcomment.created_at,
+            "user_id": mcomment.user_id,
+            "shader_id": mcomment.shader_id,
+            "username": user.name,
+            "avatar_url": user.avatar_url
+        }
+
+@router.patch("/{comment_id}")
+async def toggle_hidden(
+    comment_id: int,
+    body: ToggleHidden,
+    user: MUser = Depends(get_current_user)
+):
+    async with async_session() as session:
+        result = await session.execute(
+            select(MComment).where(MComment.id == comment_id)
+        )
+        comment = result.scalar_one_or_none()
+        if comment is None:
+            raise HTTPException(status_code=404, detail="Comment not found")
+
+        comment.hidden = body.hidden
+        await session.commit()
+        await session.refresh(comment)
+
+        comment.text = "Hidden" if comment.hidden else comment.text
+        return comment
+

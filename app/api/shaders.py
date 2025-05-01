@@ -94,7 +94,7 @@ async def get_shader_by_id(shader_id: int, request: Request):
             select(MComment, MUser.name.label("username"), MUser.avatar_url.label("avatar_url"))
             .join(MUser, MComment.user_id == MUser.id)
             .where(MComment.shader_id == shader_id)
-            .order_by(MComment.created_at.asc())
+            .order_by(MComment.created_at.desc())
         )
         rows = result.all()
         comments = []

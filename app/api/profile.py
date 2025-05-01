@@ -9,7 +9,7 @@ from app.exceptions import UserNotExistsException
 from app.models.user import User as MUser
 from app.models.shader import Shader as MShader
 from app.db.base import async_session
-from app.security.dependencies import get_current_user
+from app.security.dependencies import get_current_user, get_current_user_id
 
 router = APIRouter(
     prefix="/profile",
@@ -21,10 +21,28 @@ router = APIRouter(
 async def get_profile_by_id(user_id: int, request: Request):
     # TODO переделать через один запрос в БД
     # TODO добавить возвращаемые значения
-    if request.cookies.get("access_token") is not None:
-        user: MUser = await get_current_user(request)
+    async with async_session() as session:
+        result = await session.execute(
+            select(MUser)
+            .where(MUser.id == int(user_id))
+        )
+        user = result.scalars().first()
 
-        if user.id == user_id:
+    if not user:
+        raise UserNotExistsException
+
+
+    if request.cookies.get("access_token") is None:
+        async with async_session() as session:
+            result = await session.execute(
+                select(MShader)
+                .where((MShader.user_id == int(user_id)) & (MShader.visibility == True))
+            )
+            shaders = result.scalars().all()
+    else:
+        auth_user_id = await get_current_user_id(request)
+
+        if auth_user_id == user_id:
             async with async_session() as session:
                 result = await session.execute(
                     select(MShader)
@@ -38,24 +56,7 @@ async def get_profile_by_id(user_id: int, request: Request):
                     .where((MShader.user_id == int(user_id)) & (MShader.visibility == True))
                 )
                 shaders = result.scalars().all()
-    else:
-        # TODO вынести в функцию
-        async with async_session() as session:
-            result = await session.execute(
-                select(MUser)
-                .where(MUser.id == int(user_id))
-            )
-            user = result.scalars().first()
 
-        if not user:
-            raise UserNotExistsException
-
-        async with async_session() as session:
-            result = await session.execute(
-                select(MShader)
-                .where((MShader.user_id == int(user_id)) & (MShader.visibility == True))
-            )
-            shaders = result.scalars().all()
 
     user_data = {
         "id": user.id,
