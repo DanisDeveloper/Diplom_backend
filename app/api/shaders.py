@@ -155,3 +155,21 @@ async def upsert_shader(
             await session.commit()
             await session.refresh(shader)
             return shader
+
+
+@router.delete("/{shader_id}")
+async def delete_shader(shader_id: int, user_id: int = Depends(get_current_user_id)):
+    async with async_session() as session:
+        shader = await session.execute(
+            select(MShader).where(MShader.id == shader_id)
+        )
+        if shader is None:
+            raise HTTPException(status_code=404, detail="Shader not found")
+
+        shader = shader.scalars().first()
+        if shader.user_id != user_id:
+            raise HTTPException(status_code=403, detail="User is not the owner of the shader")
+
+        await session.delete(shader)
+        await session.commit()
+        return

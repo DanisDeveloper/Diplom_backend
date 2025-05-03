@@ -12,5 +12,5 @@ class Comment(Base):
     created_at = Column(TIMESTAMP, nullable=False)
 
     # Внешние ключи
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    shader_id = Column(Integer, ForeignKey("shaders.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    shader_id = Column(Integer, ForeignKey("shaders.id", ondelete="CASCADE"), nullable=False)

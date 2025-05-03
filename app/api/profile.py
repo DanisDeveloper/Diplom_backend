@@ -1,14 +1,18 @@
 import os
 import pathlib
-import uuid
-from sqlalchemy.orm import selectinload
-from fastapi import APIRouter, Request, UploadFile, Depends
-from sqlalchemy import select
 import shutil
-from app.exceptions import UserNotExistsException
-from app.models.user import User as MUser
-from app.models.shader import Shader as MShader
+import uuid
+
+from fastapi import APIRouter, Request, UploadFile, Depends
+from sqlalchemy import literal_column, union_all, literal
+from sqlalchemy import select
+
 from app.db.base import async_session
+from app.exceptions import UserNotExistsException
+from app.models.comment import Comment as MComment
+from app.models.like import Like as MLike
+from app.models.shader import Shader as MShader
+from app.models.user import User as MUser
 from app.security.dependencies import get_current_user, get_current_user_id
 
 router = APIRouter(
@@ -21,6 +25,8 @@ router = APIRouter(
 async def get_profile_by_id(user_id: int, request: Request):
     # TODO переделать через один запрос в БД
     # TODO добавить возвращаемые значения
+
+    # Получение информации о пользователе
     async with async_session() as session:
         result = await session.execute(
             select(MUser)
@@ -32,6 +38,34 @@ async def get_profile_by_id(user_id: int, request: Request):
         raise UserNotExistsException
 
 
+    # Получение списка активностей пользователя (лайков и комментариев)
+    activities = []
+
+    like_query =(
+            select(MShader.id, MShader.title, MLike.created_at, literal("like").label("like"))
+            .join(MLike, MShader.id == MLike.shader_id)
+            .where(MLike.user_id == int(user_id))
+        )
+
+    comment_query = (
+            select(MShader.id, MShader.title, MComment.created_at, literal("comment").label("comment"))
+            .join(MComment, MShader.id == MComment.shader_id)
+            .where(MComment.user_id == int(user_id))
+        )
+
+    forked_query = (
+        select(MShader.id, MShader.title, MShader.created_at, literal("fork").label("fork"))
+        .where((MShader.id_forked != None) & (MShader.user_id == int(user_id)))
+    )
+
+    activity_query = union_all(like_query, comment_query, forked_query)
+    async with async_session() as session:
+        result = await session.execute(activity_query.order_by(literal_column("created_at").desc()))
+        for shader_id, shader_title, action_created, activity_type in result:
+            activities.append({"shader_id": shader_id, "shader_title": shader_title, "action_created_at": action_created, "type": activity_type})
+
+
+    # Получение списка всех шейдеров пользователя
     if request.cookies.get("access_token") is None:
         async with async_session() as session:
             result = await session.execute(
@@ -57,7 +91,6 @@ async def get_profile_by_id(user_id: int, request: Request):
                 )
                 shaders = result.scalars().all()
 
-
     user_data = {
         "id": user.id,
         "email": user.email,
@@ -65,7 +98,8 @@ async def get_profile_by_id(user_id: int, request: Request):
         "biography": user.biography,
         "avatar_url": user.avatar_url,
         "created_at": user.created_at,
-        "shaders": shaders
+        "shaders": shaders,
+        "activities": activities,
     }
     # TODO сделать запрос на получение всех публичных шейдеров для всех и приватных для авторизованного пользователя
     return user_data
