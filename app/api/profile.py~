@@ -1,14 +1,18 @@
 import os
 import pathlib
-import uuid
-from sqlalchemy.orm import selectinload
-from fastapi import APIRouter, Request, UploadFile, Depends
-from sqlalchemy import select
 import shutil
-from app.exceptions import UserNotExistsException
-from app.models.user import User as MUser
-from app.models.shader import Shader as MShader
+import uuid
+
+from fastapi import APIRouter, Request, UploadFile, Depends
+from sqlalchemy import literal_column, union_all, literal, distinct, func
+from sqlalchemy import select
+
 from app.db.base import async_session
+from app.exceptions import UserNotExistsException
+from app.models.comment import Comment as MComment
+from app.models.like import Like as MLike
+from app.models.shader import Shader as MShader
+from app.models.user import User as MUser
 from app.security.dependencies import get_current_user, get_current_user_id
 
 router = APIRouter(
@@ -21,6 +25,8 @@ router = APIRouter(
 async def get_profile_by_id(user_id: int, request: Request):
     # TODO переделать через один запрос в БД
     # TODO добавить возвращаемые значения
+
+    # Получение информации о пользователе
     async with async_session() as session:
         result = await session.execute(
             select(MUser)
@@ -31,31 +37,71 @@ async def get_profile_by_id(user_id: int, request: Request):
     if not user:
         raise UserNotExistsException
 
+    # Получение списка активностей пользователя (лайков и комментариев)
+    activities = []
+
+    like_query = (
+        select(MShader.id, MShader.title, MLike.created_at, literal("like").label("like"))
+        .join(MLike, MShader.id == MLike.shader_id)
+        .where(MLike.user_id == int(user_id))
+    )
+
+    comment_query = (
+        select(MShader.id, MShader.title, MComment.created_at, literal("comment").label("comment"))
+        .join(MComment, MShader.id == MComment.shader_id)
+        .where(MComment.user_id == int(user_id))
+    )
+
+    forked_query = (
+        select(MShader.id, MShader.title, MShader.created_at, literal("fork").label("fork"))
+        .where((MShader.id_forked != None) & (MShader.user_id == int(user_id)))
+    )
+
+    activity_query = union_all(like_query, comment_query, forked_query)
+    async with async_session() as session:
+        result = await session.execute(activity_query.order_by(literal_column("created_at").desc()))
+        for shader_id, shader_title, action_created, activity_type in result:
+            activities.append({
+                "shader_id": shader_id,
+                "shader_title": shader_title,
+                "action_created_at": action_created,
+                "type": activity_type
+            })
+
+    # Получение списка всех шейдеров пользователя
+    condition = (MShader.user_id == int(user_id)) & (MShader.visibility == True)
 
     if request.cookies.get("access_token") is not None:
         auth_user_id = await get_current_user_id(request)
 
         if auth_user_id == user_id:
-            async with async_session() as session:
-                result = await session.execute(
-                    select(MShader)
-                    .where(MShader.user_id == int(user_id))
-                )
-                shaders = result.scalars().all()
-        else:
-            async with async_session() as session:
-                result = await session.execute(
-                    select(MShader)
-                    .where((MShader.user_id == int(user_id)) & (MShader.visibility == True))
-                )
-                shaders = result.scalars().all()
-    else:
-        async with async_session() as session:
-            result = await session.execute(
-                select(MShader)
-                .where((MShader.user_id == int(user_id)) & (MShader.visibility == True))
-            )
-            shaders = result.scalars().all()
+            condition = MShader.user_id == int(user_id)
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(MShader,
+                   func.count(distinct(MLike.id)).label("likes"),
+                   func.count(distinct(MComment.id)).label("comments"))
+            .outerjoin(MLike, MShader.id == MLike.shader_id)
+            .outerjoin(MComment, MShader.id == MComment.shader_id)
+            .where(condition)
+            .group_by(MShader.id)
+            .order_by(MShader.created_at.desc())
+        )
+        shaders = []
+        for shader, likes, comments in result:
+            shaders.append({
+                "id": shader.id,
+                "title": shader.title,
+                "code": shader.code,
+                "description": shader.description,
+                "created_at": shader.created_at,
+                "updated_at": shader.updated_at,
+                "id_forked": shader.id_forked,
+                "visibility": shader.visibility,
+                "likes": likes,
+                "comments": comments,
+            })
 
     user_data = {
         "id": user.id,
@@ -63,8 +109,10 @@ async def get_profile_by_id(user_id: int, request: Request):
         "name": user.name,
         "biography": user.biography,
         "avatar_url": user.avatar_url,
+        "background_url": user.background_url,
         "created_at": user.created_at,
-        "shaders": shaders
+        "shaders": shaders,
+        "activities": activities,
     }
     # TODO сделать запрос на получение всех публичных шейдеров для всех и приватных для авторизованного пользователя
     return user_data
@@ -89,3 +137,24 @@ async def upload_avatar(avatar: UploadFile, user: MUser = Depends(get_current_us
         await session.refresh(user)
 
     return {"avatar_url": avatar_url}
+
+
+@router.post("/background")
+async def upload_avatar(background: UploadFile, user: MUser = Depends(get_current_user)):
+    # Удаляем старый аватар
+    if user.background_url and os.path.exists(f"public/{user.background_url}"):
+        os.remove(f"public/{user.background_url}")
+
+    # Сохраняем новый
+    background_url = f"backgrounds/{uuid.uuid4().hex}{pathlib.Path(background.filename).suffix}"
+    with open(f"public/{background_url}", "wb+") as f:
+        shutil.copyfileobj(background.file, f)
+
+    # Обновляем информацию в БД
+    async with async_session() as session:
+        user.background_url = background_url
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+    return {"background_url": background_url}

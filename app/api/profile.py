@@ -109,6 +109,7 @@ async def get_profile_by_id(user_id: int, request: Request):
         "name": user.name,
         "biography": user.biography,
         "avatar_url": user.avatar_url,
+        "background_url": user.background_url,
         "created_at": user.created_at,
         "shaders": shaders,
         "activities": activities,
@@ -136,3 +137,39 @@ async def upload_avatar(avatar: UploadFile, user: MUser = Depends(get_current_us
         await session.refresh(user)
 
     return {"avatar_url": avatar_url}
+
+
+@router.post("/background")
+async def upload_avatar(background: UploadFile, user: MUser = Depends(get_current_user)):
+    # Удаляем старый аватар
+    if user.background_url and os.path.exists(f"public/{user.background_url}"):
+        os.remove(f"public/{user.background_url}")
+
+    # Сохраняем новый
+    background_url = f"backgrounds/{uuid.uuid4().hex}{pathlib.Path(background.filename).suffix}"
+    with open(f"public/{background_url}", "wb+") as f:
+        shutil.copyfileobj(background.file, f)
+
+    # Обновляем информацию в БД
+    async with async_session() as session:
+        user.background_url = background_url
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+    return {"background_url": background_url}
+
+@router.delete("/background")
+async def delete_background(user: MUser = Depends(get_current_user)):
+    # Удаляем старый аватар
+    if user.background_url and os.path.exists(f"public/{user.background_url}"):
+        os.remove(f"public/{user.background_url}")
+
+    # Обновляем информацию в БД
+    async with async_session() as session:
+        user.background_url = None
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+    return

@@ -12,5 +12,4 @@ class User(Base):
     role = Column(String, nullable=False, default="USER")
     created_at = Column(TIMESTAMP, nullable=False)
     avatar_url = Column(String, nullable=True)
-    background_url = Column(String, nullable=True)
     biography = Column(String)
