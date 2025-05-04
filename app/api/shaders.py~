@@ -64,9 +64,7 @@ async def get_shader_by_id(shader_id: int, request: Request):
                 select(MShader, MUser.name.label("username"))
                 .join(MUser, MShader.user_id == MUser.id)
                 .where(MShader.id == shader_id)
-            )
-
-            result = result.first()
+            ).first()
             if result is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
 
@@ -83,9 +81,8 @@ async def get_shader_by_id(shader_id: int, request: Request):
                 .join(MUser, MShader.user_id == MUser.id)
                 .outerjoin(MLike, (MLike.shader_id == MShader.id) & (MLike.user_id == user_id))
                 .where(MShader.id == shader_id)
-            )
+            ).first()
 
-            result = result.first()
             if result is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
 
