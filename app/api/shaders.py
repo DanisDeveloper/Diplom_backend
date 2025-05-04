@@ -48,7 +48,7 @@ async def get_all_visible_shaders(
             .outerjoin(MComment, MShader.id == MComment.shader_id)
             .where(MShader.visibility == True)
             .group_by(MShader.id, MUser.name)
-            .order_by(sort_option)  # TODO сделать сортировку на будщее
+            .order_by(sort_option)
         )
         shaders = result.mappings().all()
         response.headers["X-Total-Count"] = str((len(shaders) - 1) // 12 + 1)

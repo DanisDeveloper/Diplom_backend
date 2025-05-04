@@ -4,7 +4,7 @@ import shutil
 import uuid
 
 from fastapi import APIRouter, Request, UploadFile, Depends
-from sqlalchemy import literal_column, union_all, literal
+from sqlalchemy import literal_column, union_all, literal, distinct, func
 from sqlalchemy import select
 
 from app.db.base import async_session
@@ -37,21 +37,20 @@ async def get_profile_by_id(user_id: int, request: Request):
     if not user:
         raise UserNotExistsException
 
-
     # Получение списка активностей пользователя (лайков и комментариев)
     activities = []
 
-    like_query =(
-            select(MShader.id, MShader.title, MLike.created_at, literal("like").label("like"))
-            .join(MLike, MShader.id == MLike.shader_id)
-            .where(MLike.user_id == int(user_id))
-        )
+    like_query = (
+        select(MShader.id, MShader.title, MLike.created_at, literal("like").label("like"))
+        .join(MLike, MShader.id == MLike.shader_id)
+        .where(MLike.user_id == int(user_id))
+    )
 
     comment_query = (
-            select(MShader.id, MShader.title, MComment.created_at, literal("comment").label("comment"))
-            .join(MComment, MShader.id == MComment.shader_id)
-            .where(MComment.user_id == int(user_id))
-        )
+        select(MShader.id, MShader.title, MComment.created_at, literal("comment").label("comment"))
+        .join(MComment, MShader.id == MComment.shader_id)
+        .where(MComment.user_id == int(user_id))
+    )
 
     forked_query = (
         select(MShader.id, MShader.title, MShader.created_at, literal("fork").label("fork"))
@@ -62,34 +61,47 @@ async def get_profile_by_id(user_id: int, request: Request):
     async with async_session() as session:
         result = await session.execute(activity_query.order_by(literal_column("created_at").desc()))
         for shader_id, shader_title, action_created, activity_type in result:
-            activities.append({"shader_id": shader_id, "shader_title": shader_title, "action_created_at": action_created, "type": activity_type})
-
+            activities.append({
+                "shader_id": shader_id,
+                "shader_title": shader_title,
+                "action_created_at": action_created,
+                "type": activity_type
+            })
 
     # Получение списка всех шейдеров пользователя
-    if request.cookies.get("access_token") is None:
-        async with async_session() as session:
-            result = await session.execute(
-                select(MShader)
-                .where((MShader.user_id == int(user_id)) & (MShader.visibility == True))
-            )
-            shaders = result.scalars().all()
-    else:
+    condition = (MShader.user_id == int(user_id)) & (MShader.visibility == True)
+
+    if request.cookies.get("access_token") is not None:
         auth_user_id = await get_current_user_id(request)
 
         if auth_user_id == user_id:
-            async with async_session() as session:
-                result = await session.execute(
-                    select(MShader)
-                    .where(MShader.user_id == int(user_id))
-                )
-                shaders = result.scalars().all()
-        else:
-            async with async_session() as session:
-                result = await session.execute(
-                    select(MShader)
-                    .where((MShader.user_id == int(user_id)) & (MShader.visibility == True))
-                )
-                shaders = result.scalars().all()
+            condition = MShader.user_id == int(user_id)
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(MShader,
+                   func.count(distinct(MLike.id)).label("likes"),
+                   func.count(distinct(MComment.id)).label("comments"))
+            .outerjoin(MLike, MShader.id == MLike.shader_id)
+            .outerjoin(MComment, MShader.id == MComment.shader_id)
+            .where(condition)
+            .group_by(MShader.id)
+            .order_by(MShader.created_at.desc())
+        )
+        shaders = []
+        for shader, likes, comments in result:
+            shaders.append({
+                "id": shader.id,
+                "title": shader.title,
+                "code": shader.code,
+                "description": shader.description,
+                "created_at": shader.created_at,
+                "updated_at": shader.updated_at,
+                "id_forked": shader.id_forked,
+                "visibility": shader.visibility,
+                "likes": likes,
+                "comments": comments,
+            })
 
     user_data = {
         "id": user.id,
