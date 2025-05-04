@@ -6,6 +6,7 @@ import uuid
 from fastapi import APIRouter, Request, UploadFile, Depends
 from sqlalchemy import literal_column, union_all, literal, distinct, func
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 
 from app.db.base import async_session
 from app.exceptions import UserNotExistsException
@@ -77,19 +78,22 @@ async def get_profile_by_id(user_id: int, request: Request):
         if auth_user_id == user_id:
             condition = MShader.user_id == int(user_id)
 
+    MForkedShader = aliased(MShader)
     async with async_session() as session:
         result = await session.execute(
             select(MShader,
                    func.count(distinct(MLike.id)).label("likes"),
-                   func.count(distinct(MComment.id)).label("comments"))
+                   func.count(distinct(MComment.id)).label("comments"),
+                   MForkedShader)
             .outerjoin(MLike, MShader.id == MLike.shader_id)
             .outerjoin(MComment, MShader.id == MComment.shader_id)
+            .outerjoin(MForkedShader, MShader.id_forked == MForkedShader.id)
             .where(condition)
-            .group_by(MShader.id)
+            .group_by(MShader.id, MForkedShader.id)
             .order_by(MShader.created_at.desc())
         )
         shaders = []
-        for shader, likes, comments in result:
+        for shader, likes, comments, forked_shader in result:
             shaders.append({
                 "id": shader.id,
                 "title": shader.title,
@@ -101,6 +105,7 @@ async def get_profile_by_id(user_id: int, request: Request):
                 "visibility": shader.visibility,
                 "likes": likes,
                 "comments": comments,
+                "forked_shader": forked_shader
             })
 
     user_data = {

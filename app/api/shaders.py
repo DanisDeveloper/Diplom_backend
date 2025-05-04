@@ -3,6 +3,8 @@ from sqlalchemy import func, distinct
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.params import Depends, Query
 from sqlalchemy import select
+from sqlalchemy.dialects.mysql.base import MSSet
+from sqlalchemy.orm import aliased
 from starlette.responses import Response
 
 from app.db.base import async_session
@@ -59,10 +61,12 @@ async def get_all_visible_shaders(
 async def get_shader_by_id(shader_id: int, request: Request):
     response_data = None
     if request.cookies.get("access_token") is None:
+        MForkedShader = aliased(MShader)
         async with async_session() as session:
             result = await session.execute(
-                select(MShader, MUser.name.label("username"))
+                select(MShader, MUser.name.label("username"), MForkedShader)
                 .join(MUser, MShader.user_id == MUser.id)
+                .outerjoin(MForkedShader, MShader.id_forked == MForkedShader.id)
                 .where(MShader.id == shader_id)
             )
 
@@ -70,17 +74,19 @@ async def get_shader_by_id(shader_id: int, request: Request):
             if result is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
 
-            shader, username = result
+            shader, username, forked_shader = result
 
-            response_data = {"shader": shader, "is_liked": None, "username": username}
+            response_data = {"shader": shader, "is_liked": None, "username": username, "forked_shader": forked_shader}
 
     else:
         user_id: int = await get_current_user_id(request)
+        MForkedShader = aliased(MShader)
 
         async with async_session() as session:
             result = await session.execute(
-                select(MShader, MLike.id.label("is_liked"), MUser.name.label("username"))
+                select(MShader, MLike.id.label("is_liked"), MUser.name.label("username"), MForkedShader)
                 .join(MUser, MShader.user_id == MUser.id)
+                .outerjoin(MForkedShader, MShader.id_forked == MForkedShader.id)
                 .outerjoin(MLike, (MLike.shader_id == MShader.id) & (MLike.user_id == user_id))
                 .where(MShader.id == shader_id)
             )
@@ -89,7 +95,7 @@ async def get_shader_by_id(shader_id: int, request: Request):
             if result is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
 
-            shader, is_liked, username = result
+            shader, is_liked, username, forked_shader = result
 
             if shader is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
@@ -100,7 +106,7 @@ async def get_shader_by_id(shader_id: int, request: Request):
                                         detail="User is not the owner of the shader")
 
 
-        response_data = {"shader": shader, "is_liked": is_liked is not None, "username": username}
+        response_data = {"shader": shader, "is_liked": is_liked is not None, "username": username, "forked_shader": forked_shader}
 
     async with async_session() as session:
         result = await session.execute(
