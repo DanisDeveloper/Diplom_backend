@@ -89,7 +89,7 @@ async def get_profile_by_id(user_id: int, request: Request):
             .outerjoin(MComment, MShader.id == MComment.shader_id)
             .outerjoin(MForkedShader, MShader.id_forked == MForkedShader.id)
             .where(condition)
-            .group_by(MShader.id)
+            .group_by(MShader.id, MForkedShader.id)
             .order_by(MShader.created_at.desc())
         )
         shaders = []
@@ -178,3 +178,5 @@ async def delete_background(user: MUser = Depends(get_current_user)):
         await session.refresh(user)
 
     return
+
+@router.patch("/")

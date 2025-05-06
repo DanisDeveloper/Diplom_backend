@@ -1,6 +1,7 @@
 import datetime
 
 from fastapi import APIRouter, Response, Request
+from fastapi.params import Depends
 from jose import jwt, JWTError
 from sqlalchemy import select
 
@@ -14,8 +15,10 @@ from app.exceptions import (UserAlreadyExistsException,
                             InvalidRefreshTokenException)
 from app.models.user import User as MUser
 from app.models.shader import Shader as MShader
+from app.schemas.auth.update_password import UpdatePassword
 from app.schemas.auth.user_login import UserLogin
 from app.schemas.auth.user_register import UserRegister
+from app.security.dependencies import get_current_user
 from app.security.utils import get_password_hash, verify_password, create_refresh_token, create_access_token
 from app.settings import settings
 
@@ -136,3 +139,14 @@ async def get_me(request: Request):
     return {"name": user.name, "id": user.id}
 
 
+@router.patch("/password")
+async def update_password(body: UpdatePassword, user: MUser = Depends(get_current_user)):
+    if not verify_password(body.oldPassword, user.hashed_password):
+        raise InvalidPasswordException
+
+    async with async_session() as session:
+        user.hashed_password = get_password_hash(body.newPassword)
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+    return
