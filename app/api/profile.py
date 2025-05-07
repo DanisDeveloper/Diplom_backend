@@ -14,6 +14,7 @@ from app.models.comment import Comment as MComment
 from app.models.like import Like as MLike
 from app.models.shader import Shader as MShader
 from app.models.user import User as MUser
+from app.schemas.update_biography import UpdateBiography
 from app.security.dependencies import get_current_user, get_current_user_id
 
 router = APIRouter(
@@ -178,3 +179,13 @@ async def delete_background(user: MUser = Depends(get_current_user)):
         await session.refresh(user)
 
     return
+
+
+@router.patch("/biography")
+async def update_biography(body: UpdateBiography, user: MUser = Depends(get_current_user)):
+    async with async_session() as session:
+        user.biography = body.biography
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return
