@@ -39,7 +39,7 @@ async def get_profile_by_id(user_id: int, request: Request):
     if not user:
         raise UserNotExistsException
 
-    # Получение списка активностей пользователя (лайков и комментариев)
+    # Получение списка активностей пользователя (лайков, комментариев и forked шейдеров)
     activities = []
 
     like_query = (
@@ -82,32 +82,42 @@ async def get_profile_by_id(user_id: int, request: Request):
     MForkedShader = aliased(MShader)
     async with async_session() as session:
         result = await session.execute(
-            select(MShader,
-                   func.count(distinct(MLike.id)).label("likes"),
-                   func.count(distinct(MComment.id)).label("comments"),
-                   MForkedShader)
-            .outerjoin(MLike, MShader.id == MLike.shader_id)
-            .outerjoin(MComment, MShader.id == MComment.shader_id)
-            .outerjoin(MForkedShader, MShader.id_forked == MForkedShader.id)
+            select(MShader)
             .where(condition)
-            .group_by(MShader.id, MForkedShader.id)
             .order_by(MShader.created_at.desc())
         )
-        shaders = []
-        for shader, likes, comments, forked_shader in result:
-            shaders.append({
-                "id": shader.id,
-                "title": shader.title,
-                "code": shader.code,
-                "description": shader.description,
-                "created_at": shader.created_at,
-                "updated_at": shader.updated_at,
-                "id_forked": shader.id_forked,
-                "visibility": shader.visibility,
-                "likes": likes,
-                "comments": comments,
-                "forked_shader": forked_shader
-            })
+        shaders = result.scalars().all()
+
+    # Объединённый запрос для подсчёта лайков, комментариев и форков на шейдерах пользователя
+    async with async_session() as session:
+        subquery_user_shaders = select(MShader.id).where(MShader.user_id == int(user_id)).subquery()
+
+        result = await session.execute(
+            select(
+                # Подсчёт лайков
+                select(func.count(MLike.id))
+                .join_from(MLike, MShader, MLike.shader_id == MShader.id)
+                .where(MShader.user_id == int(user_id))
+                .scalar_subquery()
+                .label("likes_received"),
+
+                # Подсчёт комментариев
+                select(func.count(MComment.id))
+                .join_from(MComment, MShader, MComment.shader_id == MShader.id)
+                .where(MShader.user_id == int(user_id))
+                .scalar_subquery()
+                .label("comments_received"),
+
+                # Подсчёт форков
+                select(func.count(MShader.id))
+                .where(MShader.id_forked != None)
+                .where(MShader.id_forked.in_(subquery_user_shaders))
+                .scalar_subquery()
+                .label("forks_received")
+            )
+        )
+
+        total_likes, total_comments, total_forks = result.one()
 
     user_data = {
         "id": user.id,
@@ -119,6 +129,9 @@ async def get_profile_by_id(user_id: int, request: Request):
         "created_at": user.created_at,
         "shaders": shaders,
         "activities": activities,
+        "total_likes": total_likes,
+        "total_comments" : total_comments,
+        "total_forks" : total_forks
     }
     # TODO сделать запрос на получение всех публичных шейдеров для всех и приватных для авторизованного пользователя
     return user_data
