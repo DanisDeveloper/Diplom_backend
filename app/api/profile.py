@@ -111,7 +111,7 @@ async def get_profile_by_id(user_id: int, request: Request):
                 # Подсчёт форков
                 select(func.count(MShader.id))
                 .where(MShader.id_forked != None)
-                .where(MShader.id_forked.in_(subquery_user_shaders))
+                .where(MShader.id_forked.in_(select(subquery_user_shaders.c.id)))
                 .scalar_subquery()
                 .label("forks_received")
             )
