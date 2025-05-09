@@ -1,7 +1,7 @@
-from . import shader_in
+from . import shader
 from . import shader_out
 
 __all__ = [
-    "shader_in",
+    "shader",
     "shader_out"
 ]

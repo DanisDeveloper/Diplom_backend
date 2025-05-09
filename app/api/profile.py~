@@ -87,10 +87,8 @@ async def get_profile_by_id(user_id: int, request: Request):
             .where(condition)
             .order_by(MShader.created_at.desc())
         )
-        shaders = []
         for shader, forked_shader in result.all():
             shader.forked_shader = forked_shader
-            shaders.append(shader)
 
 
 

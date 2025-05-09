@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 
-class Shader(BaseModel):
+class ShaderIn(BaseModel):
     id: int | None
     title: str
     description: str

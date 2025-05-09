@@ -17,7 +17,7 @@ router = APIRouter(
 
 @router.post("/{shader_id}")
 async def like_shader(shader_id: int, user_id: int = Depends(get_current_user_id)):
-    # TODO в идеале сделать логическое удаление, но пока обойдусь
+    # TODO в идеале сделать логическое удаление, но пока обойдусь и нет поля для сохранения статуса лайка в модели
     async with async_session() as session:
         like = MLike(
             created_at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None),

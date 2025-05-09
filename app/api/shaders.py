@@ -1,18 +1,21 @@
 import datetime
+
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, distinct
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.params import Depends, Query
 from sqlalchemy import select
 from sqlalchemy.dialects.mysql.base import MSSet
 from sqlalchemy.orm import aliased
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 
 from app.db.base import async_session
 from app.models.like import Like as MLike
 from app.models.comment import Comment as MComment
 from app.models.shader import Shader as MShader
 from app.models.user import User as MUser
-from app.schemas.shader.shader import Shader
+from app.schemas.shader.shader_in import ShaderIn
+from app.schemas.shader.shader_out import ShaderOut
 from app.security.dependencies import get_current_user_id
 
 router = APIRouter(
@@ -27,13 +30,12 @@ async def get_all_visible_shaders(
         page: int = Query(default=1, ge=1),
         sort: str = Query(default="Newest")
 ):
-
     match sort:
         case 'Liked':
             sort_option = func.count(distinct(MLike.id)).desc()
         case 'Commented':
             sort_option = func.count(distinct(MComment.id)).desc()
-        case _: # 'Newest'
+        case _:  # 'Newest'
             sort_option = MShader.created_at.desc()
 
     async with async_session() as session:
@@ -57,8 +59,9 @@ async def get_all_visible_shaders(
         return shaders[(page - 1) * 12: page * 12]
 
 
-@router.get("/{shader_id}")
+@router.get("/{shader_id}/")
 async def get_shader_by_id(shader_id: int, request: Request):
+    print(f"Получаю шейдер {shader_id}")
     response_data = None
     if request.cookies.get("access_token") is None:
         MForkedShader = aliased(MShader)
@@ -75,8 +78,33 @@ async def get_shader_by_id(shader_id: int, request: Request):
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
 
             shader, username, forked_shader = result
-
-            response_data = {"shader": shader, "is_liked": None, "username": username, "forked_shader": forked_shader}
+            print(shader)
+            response_data = {
+                "shader": {
+                    "id": shader.id,
+                    "title": shader.title,
+                    "description": shader.description,
+                    "code": shader.code,
+                    "visibility": shader.visibility,
+                    "created_at": shader.created_at.isoformat(),
+                    "updated_at": shader.updated_at.isoformat(),
+                    "user_id": shader.user_id,
+                    "id_forked": shader.id_forked
+                },
+                "is_liked": None,
+                "username": username,
+                "forked_shader": None if forked_shader is None else {
+                    "id": forked_shader.id,
+                    "title": forked_shader.title,
+                    "description": forked_shader.description,
+                    "code": forked_shader.code,
+                    "visibility": forked_shader.visibility,
+                    "created_at": forked_shader.created_at.isoformat(),
+                    "updated_at": forked_shader.updated_at.isoformat(),
+                    "user_id": forked_shader.user_id,
+                    "id_forked": forked_shader.id_forked
+                }
+            }
 
     else:
         user_id: int = await get_current_user_id(request)
@@ -94,8 +122,8 @@ async def get_shader_by_id(shader_id: int, request: Request):
             result = result.first()
             if result is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
-
             shader, is_liked, username, forked_shader = result
+            print(shader)
 
             if shader is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shader not found")
@@ -105,8 +133,32 @@ async def get_shader_by_id(shader_id: int, request: Request):
                     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                         detail="User is not the owner of the shader")
 
-
-        response_data = {"shader": shader, "is_liked": is_liked is not None, "username": username, "forked_shader": forked_shader}
+        response_data = {
+            "shader": {
+                "id": shader.id,
+                "title": shader.title,
+                "description": shader.description,
+                "code": shader.code,
+                "visibility": shader.visibility,
+                "created_at": shader.created_at.isoformat(),
+                "updated_at": shader.updated_at.isoformat(),
+                "user_id": shader.user_id,
+                "id_forked": shader.id_forked
+            },
+            "is_liked": is_liked is not None,
+            "username": username,
+            "forked_shader": None if forked_shader is None else {
+                "id": forked_shader.id,
+                "title": forked_shader.title,
+                "description": forked_shader.description,
+                "code": forked_shader.code,
+                "visibility": forked_shader.visibility,
+                "created_at": forked_shader.created_at.isoformat(),
+                "updated_at": forked_shader.updated_at.isoformat(),
+                "user_id": forked_shader.user_id,
+                "id_forked": forked_shader.id_forked
+            }
+        }
 
     async with async_session() as session:
         result = await session.execute(
@@ -122,18 +174,20 @@ async def get_shader_by_id(shader_id: int, request: Request):
                 "id": comment.id,
                 "text": comment.text if not comment.hidden else "Hidden",
                 "hidden": comment.hidden,
-                "created_at": comment.created_at,
+                "created_at": comment.created_at.isoformat(),
                 "user_id": comment.user_id,
                 "shader_id": comment.shader_id,
                 "username": username,
                 "avatar_url": avatar_url,
             })
     response_data["comments"] = comments
-    return response_data
+    print(response_data)
+    return JSONResponse(content=response_data, media_type="application/json")
+
 
 @router.post("/")
 async def upsert_shader(
-        body: Shader,
+        body: ShaderIn,
         user_id: int = Depends(get_current_user_id)
 ):
     if body.id is None:  # INSERT

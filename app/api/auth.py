@@ -38,6 +38,7 @@ async def register(user: UserRegister, response: Response):
         existing_user = result.scalar()
         if existing_user:
             raise UserAlreadyExistsException
+
         hashed_password = get_password_hash(user.password)
         user = MUser(
             email=str(user.email),
@@ -50,15 +51,17 @@ async def register(user: UserRegister, response: Response):
         )
         session.add(user)
         await session.commit()
+        await session.refresh(user)
 
-    access_token = create_access_token({"sub": str(existing_user.id)})
-    refresh_token = create_refresh_token({"sub": str(existing_user.id)})
+    access_token = create_access_token({"sub": str(user.id)})
+    refresh_token = create_refresh_token({"sub": str(user.id)})
     response.set_cookie("access_token", access_token, httponly=True)
     response.set_cookie("refresh_token", refresh_token, httponly=True)
 
     return {
         "message": "Successfully registered",
     }
+
 
 @router.post("/login")
 async def login(response: Response, user: UserLogin):
