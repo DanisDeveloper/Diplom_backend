@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     POSTGRES_ADDRESS: str
     POSTGRES_PORT: int
     POSTGRES_DB: str
+    DATABASE_URL: str
 
     SECRET_KEY: str
     ALGORITHM: str
