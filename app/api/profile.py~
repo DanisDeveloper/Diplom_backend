@@ -3,7 +3,8 @@ import pathlib
 import shutil
 import uuid
 
-from fastapi import APIRouter, Request, UploadFile, Depends
+from fastapi import APIRouter, Request, Response, UploadFile, Depends
+from fastapi.params import Query
 from sqlalchemy import literal_column, union_all, literal, func
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
@@ -24,7 +25,11 @@ router = APIRouter(
 
 
 @router.get("/{user_id}")
-async def get_profile_by_id(user_id: int, request: Request):
+async def get_profile_by_id(
+        user_id: int,
+        response: Response,
+        request: Request,
+        activity_page: int = Query(default=1, ge=1)):
     # TODO переделать через один запрос в БД
     # TODO добавить возвращаемые значения
 
@@ -61,8 +66,13 @@ async def get_profile_by_id(user_id: int, request: Request):
 
     activity_query = union_all(like_query, comment_query, forked_query)
     async with async_session() as session:
-        result = await session.execute(activity_query.order_by(literal_column("created_at").desc()))
-        for shader_id, shader_title, action_created, activity_type in result:
+        result = await session.execute(
+            activity_query
+            .order_by(literal_column("created_at").desc())
+        )
+        all_result = result.all()
+        response.headers["X-Total-Count"] = str(len(all_result))
+        for shader_id, shader_title, action_created, activity_type in all_result:
             activities.append({
                 "shader_id": shader_id,
                 "shader_title": shader_title,
@@ -87,10 +97,10 @@ async def get_profile_by_id(user_id: int, request: Request):
             .where(condition)
             .order_by(MShader.created_at.desc())
         )
+        shaders = []
         for shader, forked_shader in result.all():
             shader.forked_shader = forked_shader
-
-
+            shaders.append(shader)
 
     # Объединённый запрос для подсчёта лайков, комментариев и форков на шейдерах пользователя
     async with async_session() as session:
@@ -134,11 +144,56 @@ async def get_profile_by_id(user_id: int, request: Request):
         "shaders": shaders,
         "activities": activities,
         "total_likes": total_likes,
-        "total_comments" : total_comments,
-        "total_forks" : total_forks
+        "total_comments": total_comments,
+        "total_forks": total_forks
     }
-    # TODO сделать запрос на получение всех публичных шейдеров для всех и приватных для авторизованного пользователя
+
     return user_data
+
+
+@router.get("/{profile_id}/activities")
+async def get_activities(
+        response: Response,
+        user_id: int = Depends(get_current_user_id),
+        activity_page: int = Query(default=1, ge=1),
+        limit: int = Query(default=20, ge=1)
+):
+    # Получение списка активностей пользователя (лайков, комментариев и forked шейдеров)
+    activities = []
+
+    like_query = (
+        select(MShader.id, MShader.title, MLike.created_at, literal("like").label("like"))
+        .join(MLike, MShader.id == MLike.shader_id)
+        .where(MLike.user_id == int(user_id))
+    )
+
+    comment_query = (
+        select(MShader.id, MShader.title, MComment.created_at, literal("comment").label("comment"))
+        .join(MComment, MShader.id == MComment.shader_id)
+        .where(MComment.user_id == int(user_id))
+    )
+
+    forked_query = (
+        select(MShader.id, MShader.title, MShader.created_at, literal("fork").label("fork"))
+        .where((MShader.id_forked != None) & (MShader.user_id == int(user_id)))
+    )
+
+    activity_query = union_all(like_query, comment_query, forked_query)
+    async with async_session() as session:
+        result = await session.execute(
+            activity_query
+            .offset((activity_page - 1) * limit)
+            .limit(activity_page * limit)
+            .order_by(literal_column("created_at").desc())
+        )
+        for shader_id, shader_title, action_created, activity_type in result:
+            activities.append({
+                "shader_id": shader_id,
+                "shader_title": shader_title,
+                "action_created_at": action_created,
+                "type": activity_type
+            })
+    return activities
 
 
 @router.post("/avatar")
@@ -163,7 +218,7 @@ async def upload_avatar(avatar: UploadFile, user: MUser = Depends(get_current_us
 
 
 @router.post("/background")
-async def upload_avatar(background: UploadFile, user: MUser = Depends(get_current_user)):
+async def upload_background(background: UploadFile, user: MUser = Depends(get_current_user)):
     # Удаляем старый аватар
     if user.background_url and os.path.exists(f"public/{user.background_url}"):
         os.remove(f"public/{user.background_url}")
@@ -181,6 +236,7 @@ async def upload_avatar(background: UploadFile, user: MUser = Depends(get_curren
         await session.refresh(user)
 
     return {"background_url": background_url}
+
 
 @router.delete("/background")
 async def delete_background(user: MUser = Depends(get_current_user)):
